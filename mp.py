@@ -31,7 +31,7 @@ last_length = 0
 cap = cv2.VideoCapture(0)
 
 # App script ID
-SCRIPT_ID = "AKfycbyy4sbPR7UDhQbhmkO_XGTxHSSobYKW8sDIvE469eFmUFlU76ZQu4CONqYFyFNclc5BWQ"
+SCRIPT_ID = "YOUR-SCRIPT-ID"
 
 # timeout (frames)
 timeout = 4
