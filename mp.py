@@ -30,6 +30,10 @@ last_length = 0
 
 # Init camera
 picam2 = Picamera2()
+# Configura el modo de preview
+picam2.preview_configuration.main.size = (640, 480)
+picam2.preview_configuration.main.format = "RGB888"
+picam2.configure("preview")
 picam2.start()
 
 # App script ID
@@ -78,7 +82,7 @@ def store_image_async(frame):
 while True:
     try:
         frame = picam2.capture_array()
-        if not frame:
+        if frame is None:
             break
 
         # Create rgb image
@@ -160,5 +164,5 @@ while True:
         print(f"Pipeline error: {err}")
 
 # Release hardware and software resources
-cap.release()
+picam2.stop()
 cv2.destroyAllWindows()
