@@ -1,0 +1,3 @@
+*.pt
+/tracker
+__pycache__/
