@@ -1,3 +1,4 @@
+import os
 import time
 import json
 '''
@@ -14,6 +15,9 @@ track_sample = {
 class Mtracker:
     
     def __init__(self, id, tracks = None, timeout = 5000):
+        # Validate directory created
+        if not os.path.exists("./tracker"):
+            os.makedirs("tracker")
         # Set ID
         self._id = id
         # Set timeout
@@ -185,6 +189,5 @@ class Mtracker:
             print(f"Error while trying to update tracks: {err}")
             return detections
         finally:
-            print("saved")
             with open(f"./tracker/tracks-{self._id}.json", "w") as file:
                 file.write(json.dumps({ "tracks": self._tracks }))
