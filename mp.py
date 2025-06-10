@@ -6,6 +6,7 @@ import requests
 import threading
 import mediapipe as mp
 from mtracker import Mtracker
+from picamera2 import Picamera2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
@@ -28,7 +29,8 @@ tracker = Mtracker("test", timeout=1000)
 last_length = 0
 
 # Init camera
-cap = cv2.VideoCapture(0)
+picam2 = Picamera2()
+picam2.start()
 
 # App script ID
 SCRIPT_ID = "YOUR-SCRIPT-ID"
@@ -73,10 +75,10 @@ def store_image_async(frame):
     
     
 # Main loop
-while cap.isOpened():
+while True:
     try:
-        ret, frame = cap.read()
-        if not ret:
+        frame = picam2.capture_array()
+        if not frame:
             break
 
         # Create rgb image
