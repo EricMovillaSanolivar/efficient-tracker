@@ -6,7 +6,6 @@ import requests
 import threading
 import mediapipe as mp
 from mtracker import Mtracker
-from picamera2 import Picamera2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
@@ -46,15 +45,12 @@ tracker = Mtracker("test", timeout=1000)
 last_length = 0
 
 # Init camera
-picam2 = Picamera2()
-# Configura el modo de preview
-picam2.preview_configuration.main.size = (640, 480)
-picam2.preview_configuration.main.format = "RGB888"
-picam2.configure("preview")
-picam2.start()
+cap = cv2.VideoCapture(0)
+if not cap.isOpened():
+    raise IOError("No se pudo acceder a la cámara.")
 
 # App script ID
-SCRIPT_ID = "YOUR-SCRIPT-ID"
+SCRIPT_ID = "AKfycbyy4sbPR7UDhQbhmkO_XGTxHSSobYKW8sDIvE469eFmUFlU76ZQu4CONqYFyFNclc5BWQ"
 
 # timeout (frames)
 timeout = 3
@@ -77,7 +73,7 @@ def store_image(frame, className="Unknown"):
     # Parameters
     data = {
         'folder': "detecciones_camara_trampa",
-        'imageName': f"captura-{className}-{fecha_hora}.jpg",
+        'imageName': f"{className}-{fecha_hora}.jpg",
         'imageType': 'image/jpeg',
         'imageBase64': image_base64
     }
@@ -98,8 +94,8 @@ def store_image_async(frame, className):
 # Main loop
 while True:
     try:
-        frame = picam2.capture_array()
-        if frame is None:
+        ret, frame = cap.read()
+        if not ret:
             break
 
         # Create rgb image
@@ -170,11 +166,17 @@ while True:
             
             # Draw rectangle
             cv2.rectangle(frm, (x1, y1), (x2, y2), (0, 255, 0), 1)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
             # Draw label
             cv2.putText(frm, f'{name}: {oid}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(frame, f'{name}: {oid}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             store_image_async(frm.copy(), result["class_name"])
             # Remove from queue
             del queue[result["id"]]
+        
+        # Draw results
+        if has_gui:
+            cv2.imshow('Object Detection', frame)
             
         # Press esc to leave program
         if cv2.waitKey(1) & 0xFF == 27:
@@ -183,5 +185,5 @@ while True:
         print(f"Pipeline error: {err}")
 
 # Release hardware and software resources
-picam2.stop()
+cap.release()
 cv2.destroyAllWindows()
