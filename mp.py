@@ -76,15 +76,15 @@ except Exception as err:
 
 # Validate gui
 has_gui = False
-if os.environ.get("DISPLAY"):
-    try:
-        cv2.namedWindow("TrapCam", cv2.WINDOW_NORMAL)
-        has_gui = True
-        print("Host has GUI")
-    except cv2.error:
-        print("Host has not GUI (cv2 error)")
-else:
-    print("DISPLAY not set, running headless")
+# if os.environ.get("DISPLAY"):
+#     try:
+#         cv2.namedWindow("TrapCam", cv2.WINDOW_NORMAL)
+#         has_gui = True
+#         print("Host has GUI")
+#     except cv2.error:
+#         print("Host has not GUI (cv2 error)")
+# else:
+#     print("DISPLAY not set, running headless")
 
 # Define model path
 vmodel_path = python.BaseOptions(model_asset_path='./models/efficientdet_lite2.tflite', delegate=python.BaseOptions.Delegate.CPU)
@@ -297,7 +297,7 @@ while running:
         
         # Draw results
         if has_gui:
-            cv2.imshow('TrapCam', frame)
+            # cv2.imshow('TrapCam', frame)
             # Press esc to leave program
             if cv2.waitKey(1) & 0xFF == 27:
                 running = False
