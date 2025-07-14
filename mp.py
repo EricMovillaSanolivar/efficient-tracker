@@ -11,12 +11,18 @@ import time
 import json
 import signal
 import base64
+import argparse
 import requests
 import threading
 import mediapipe as mp
 from mtracker import Mtracker
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+
+# Flags for interface
+parser = argparse.ArgumentParser()
+parser.add_argument("--enable-gui", action="store_true", help="Run using GUI interface")
+args = parser.parse_args()
 
 # Trap cam engine is runing
 running = True
@@ -76,15 +82,17 @@ except Exception as err:
 
 # Validate gui
 has_gui = False
-# if os.environ.get("DISPLAY"):
-#     try:
-#         cv2.namedWindow("TrapCam", cv2.WINDOW_NORMAL)
-#         has_gui = True
-#         print("Host has GUI")
-#     except cv2.error:
-#         print("Host has not GUI (cv2 error)")
-# else:
-#     print("DISPLAY not set, running headless")
+
+if args.enable_gui:
+    if os.environ.get("DISPLAY"):
+        try:
+            cv2.namedWindow("TrapCam", cv2.WINDOW_NORMAL)
+            has_gui = True
+            print("Host has GUI")
+        except cv2.error:
+            print("Host has not GUI (cv2 error)")
+    else:
+        print("DISPLAY not set, running headless")
 
 # Define model path
 vmodel_path = python.BaseOptions(model_asset_path='./models/efficientdet_lite2.tflite', delegate=python.BaseOptions.Delegate.CPU)
@@ -104,8 +112,10 @@ script_failed = SCRIPT_ID is None
 # Store image function
 def store_image(frame, className="Unknown", isStored=False):
     if script_failed:
+        print("Theres no script id to execute")
         return False
     
+    print("Attempting to save file on cloud")
     global local_folder
     # Build URL
     base_url = f"https://script.google.com/macros/s/{SCRIPT_ID}/exec"
@@ -131,6 +141,7 @@ def store_image(frame, className="Unknown", isStored=False):
         js = response.json()
         if "error" in js:
             raise ValueError(f"Error reportado por el servidor: {js['error']}")
+        print("File saved succesfully...")
         return True
     except Exception as e:
         print('Error al enviar imagen, guardando de manera local. error:', e)
