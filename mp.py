@@ -7,17 +7,29 @@ import requests
 import threading
 import mediapipe as mp
 from mtracker import Mtracker
-from picamera2 import Picamera2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# Init camera
-cap = Picamera2()
-# Configura el modo de preview
-cap.preview_configuration.main.size = (640, 480)
-cap.preview_configuration.main.format = "RGB888"
-cap.configure("preview")
-cap.start()
+
+# Attempt to load pi camera
+try:
+    from picamera2 import Picamera2
+
+    # Init camera
+    cap = Picamera2()
+    # Configura el modo de preview
+    cap.preview_configuration.main.size = (640, 480)
+    cap.preview_configuration.main.format = "RGB888"
+    cap.configure("preview")
+    cap.start()
+    is_picam = True
+# Try to load another camera
+except Exception as err:
+    print(f"Error with picamera: {err}")
+    cap = cv2.VideoCapture(0)
+    is_picam = False
+    if not cap.isOpened():
+        raise IOError("No se pudo acceder a la cámara.")
 
 # Load yolo classes equivalent
 yolo_cls = None
@@ -98,9 +110,14 @@ def store_image_async(frame, className):
 # Main loop
 while True:
     try:
-        ret, frame = cap.read()
-        if not ret:
-            break
+        if not is_picam:
+            ret, frame = cap.read()
+            if not ret:
+                break
+        else:
+            frame = cap.capture_array()
+            if frame is None:
+                break
 
         # Create rgb image
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
