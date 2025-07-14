@@ -1,7 +1,15 @@
+# 
+# IMPORTANT:
+# Before to use this script, set an environtment variable on your os as "TRAP_CAMERA_APPSCRIPT"
+# with your appscript id, that receives and store the image.
+# 
+
 import os
+import re
 import cv2
 import time
 import json
+import signal
 import base64
 import requests
 import threading
@@ -10,11 +18,33 @@ from mtracker import Mtracker
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+# Trap cam engine is runing
+running = True
+# Track id history
+history = []
+new_class = None
+# Results count status
+last_length = 0
+# timeout (frames)
+timeout = 3
+# Pic queue
+queue = {}
+local_folder = "./tracker/detecciones_locales"
+RETRY_INTERVAL = 1800  # 30 minutes
+last_retry = time.time()
+
+# Handle close
+def handle_exit(signum, frame):
+    global running
+    print(f"Received signal -> {signum}. Exiting...")
+    running = False
+# Capture Ctrl+C (SIGINT) and kill (SIGTERM)
+signal.signal(signal.SIGINT, handle_exit)
+signal.signal(signal.SIGTERM, handle_exit)
 
 # Attempt to load pi camera
 try:
     from picamera2 import Picamera2
-
     # Init camera
     cap = Picamera2()
     # Configura el modo de preview
@@ -23,33 +53,35 @@ try:
     cap.configure("preview")
     cap.start()
     is_picam = True
-# Try to load another camera
+    print("Picamera loaded succesfully")
+# Try to load system default camera
 except Exception as err:
-    print(f"Error with picamera: {err}")
+    print("Picamera not available, attempting to load default camera")
     cap = cv2.VideoCapture(0)
     is_picam = False
     if not cap.isOpened():
-        raise IOError("No se pudo acceder a la cámara.")
+        raise IOError("Can't access to default system camera.")
+    print("System default camera loaded succesfully")
+
 
 # Load yolo classes equivalent
 yolo_cls = None
-with open("./classes.json", "r") as file:
-    yolo_cls = json.load(file)
-    
-# Track id history
-history = []
-new_class = None
+try:
+    with open("./classes.json", "r") as file:
+        yolo_cls = json.load(file)
+    print("Classes.json succesfully loaded")
+except Exception as err:
+    print(f"Error while trying to load classes.json {err}")
+    raise SystemExit
 
 # Validate gui
 has_gui = False
 try:
-    cv2.namedWindow("test", cv2.WINDOW_NORMAL)
-    cv2.imshow("test", cv2.imread("/dev/null"))  # imagen vacía para probar
-    cv2.waitKey(1)
-    cv2.destroyAllWindows()
+    cv2.namedWindow("TrapCam", cv2.WINDOW_NORMAL)
     has_gui = True
+    print("Host has GUI")
 except cv2.error:
-    has_gui = False
+    print("Host has not GUI")
 
 # Define model path
 vmodel_path = python.BaseOptions(model_asset_path='./models/efficientdet_lite2.tflite', delegate=python.BaseOptions.Delegate.CPU)
@@ -60,22 +92,19 @@ detector = vision.ObjectDetector.create_from_options(voptions)
 
 # Reference to tracker
 tracker = Mtracker("test", timeout=1000)
-
-# Results count status
-last_length = 0
+print("Mediapipe model succesfully loaded")
 
 # App script ID
 SCRIPT_ID = os.getenv("TRAP_CAMERA_APPSCRIPT")
-
-# timeout (frames)
-timeout = 3
-
-# Pic queue
-queue = {}
-
+script_failed = SCRIPT_ID is None
 
 # Store image function
-def store_image(frame, className="Unknown"):
+def store_image(frame, className="Unknown", isStored=False):
+    if script_failed:
+        return False
+    
+    global local_folder
+    # Build URL
     base_url = f"https://script.google.com/macros/s/{SCRIPT_ID}/exec"
 
     # Encode frame
@@ -96,20 +125,85 @@ def store_image(frame, className="Unknown"):
     # Send request
     try:
         response = requests.post(base_url, data=data, timeout=10)
-        print('Respuesta:', response.text)
+        js = response.json()
+        if "error" in js:
+            raise ValueError(f"Error reportado por el servidor: {js['error']}")
+        return True
     except Exception as e:
+        print('Error al enviar imagen, guardando de manera local. error:', e)
         # Store locally
-        print('Error al enviar imagen:', e)
+        os.makedirs(local_folder, exist_ok=True)
+        local_path = os.path.join(local_folder, f"{className}-{fecha_hora}.jpg")
+        try:
+            if not isStored:
+                with open(local_path, "wb") as f:
+                    f.write(buffer)
+                print(f"Imagen guardada localmente en: {local_path}")
+        except Exception as err:
+            print(f"No se pudo guardar localmente la imagen: {err}")
+        return False
 
 # Thread function
 def store_image_async(frame, className):
     thread = threading.Thread(target=store_image, args=(frame, className))
     thread.start()
     
-    
+# load local stored images and atempt to save it
+def retry_stored_images():
+    global local_folder
+
+    # Verify directory and content
+    if not os.path.exists(local_folder):
+        print(f"Directory {local_folder} doesn't exists.")
+        return
+
+    # Search files
+    files = [f for f in os.listdir(local_folder) if f.endswith(".jpg")]
+
+    if not files:
+        print("There are no images to upload.")
+        return
+
+    print(f"Loading {len(files)} images.")
+
+    for fl in files:
+        local_path = os.path.join(local_folder, fl)
+
+        # Extract className from filename (formato: className-fecha.jpg)
+        match = re.match(r"(.+)-\d{2}-\d{2}-\d{4}_\d{6}\.jpg", fl)
+        if match:
+            class_name = match.group(1)
+        else:
+            print(f"Class not found in file name: {fl}")
+            continue
+
+        # Read image
+        frame = cv2.imread(local_path)
+        if frame is None:
+            print(f"Can't read the file: {fl}")
+            continue
+
+        # Attempt to upload image again
+        try:
+            loaded = store_image(frame, className=class_name, isStored=True)
+            # Validate
+            if loaded:
+                os.remove(local_path)
+                print(f"Imagen {fl} subida y eliminada localmente.")
+            else:
+                print("Something went wrong while trying to upload the file")
+        except Exception as e:
+            print(f"Error trying to upload file {fl}: {e}")
+
+        
+print("Initializing...")
 # Main loop
-while True:
+while running:
     try:
+        # Validate last offline attempt
+        if time.time() - last_retry >= RETRY_INTERVAL:
+            threading.Thread(target=retry_stored_images, daemon=True).start()
+            last_retry = time.time()
         if not is_picam:
             ret, frame = cap.read()
             if not ret:
@@ -162,6 +256,14 @@ while True:
         
         # Draw bbox and label for each result
         for result in results:
+            
+            bbx = result["bbox"]            
+            x1 = int(bbx[0] * iw)
+            y1 = int(bbx[1] * ih)
+            x2 = int(bbx[2] * iw)
+            y2 = int(bbx[3] * ih)
+            
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 1)
             # Delay a frame to avoid flickering
             if result["id"] not in queue:
                 # Add to queue
@@ -177,13 +279,8 @@ while True:
             # New object detected, store image
             history.append(result["id"])
             # Retrieve required data
-            bbx = result["bbox"]
             name = result["class_name"]
             oid = result["id"]
-            x1 = int(bbx[0] * iw)
-            y1 = int(bbx[1] * ih)
-            x2 = int(bbx[2] * iw)
-            y2 = int(bbx[3] * ih)
             
             # Draw rectangle
             cv2.rectangle(frm, (x1, y1), (x2, y2), (0, 255, 0), 1)
@@ -197,15 +294,19 @@ while True:
         
         # Draw results
         if has_gui:
-            cv2.imshow('Object Detection', frame)
+            cv2.imshow('TrapCam', frame)
+            # Press esc to leave program
+            if cv2.waitKey(1) & 0xFF == 27:
+                running = False
             
-        # Press esc to leave program
-        if cv2.waitKey(1) & 0xFF == 27:
-            break
     except Exception as err:
         print(f"Pipeline error: {err}")
         
-        
+
 # Release hardware and software resources
-cap.stop()
-cv2.destroyAllWindows()
+if is_picam:
+    cap.stop()
+else:
+    cap.release()
+if has_gui:
+    cv2.destroyAllWindows()
