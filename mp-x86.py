@@ -1,3 +1,4 @@
+import os
 import cv2
 import time
 import json
@@ -9,8 +10,6 @@ from mtracker import Mtracker
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-import tkinter as tk
-
 # Load yolo classes equivalent
 yolo_cls = None
 with open("./classes.json", "r") as file:
@@ -20,16 +19,16 @@ with open("./classes.json", "r") as file:
 history = []
 new_class = None
 
-# Check if GUI is available
+# Validate gui
 has_gui = False
 try:
-    root = tk.Tk()
-    # Destroy the window immediately
-    root.destroy()
+    cv2.namedWindow("test", cv2.WINDOW_NORMAL)
+    cv2.imshow("test", cv2.imread("/dev/null"))  # imagen vacía para probar
+    cv2.waitKey(1)
+    cv2.destroyAllWindows()
     has_gui = True
-except tk.TclError:
+except cv2.error:
     has_gui = False
-
 
 # Define model path
 vmodel_path = python.BaseOptions(model_asset_path='./models/efficientdet_lite2.tflite', delegate=python.BaseOptions.Delegate.CPU)
@@ -50,7 +49,7 @@ if not cap.isOpened():
     raise IOError("No se pudo acceder a la cámara.")
 
 # App script ID
-SCRIPT_ID = "AKfycbyy4sbPR7UDhQbhmkO_XGTxHSSobYKW8sDIvE469eFmUFlU76ZQu4CONqYFyFNclc5BWQ"
+SCRIPT_ID = os.getenv("TRAP_CAMERA_APPSCRIPT")
 
 # timeout (frames)
 timeout = 3
@@ -83,6 +82,7 @@ def store_image(frame, className="Unknown"):
         response = requests.post(base_url, data=data, timeout=10)
         print('Respuesta:', response.text)
     except Exception as e:
+        # Store locally
         print('Error al enviar imagen:', e)
 
 # Thread function

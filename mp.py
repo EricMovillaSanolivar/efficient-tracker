@@ -11,7 +11,13 @@ from picamera2 import Picamera2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-import tkinter as tk
+# Init camera
+cap = Picamera2()
+# Configura el modo de preview
+cap.preview_configuration.main.size = (640, 480)
+cap.preview_configuration.main.format = "RGB888"
+cap.configure("preview")
+cap.start()
 
 # Load yolo classes equivalent
 yolo_cls = None
@@ -22,16 +28,16 @@ with open("./classes.json", "r") as file:
 history = []
 new_class = None
 
-# Check if GUI is available
+# Validate gui
 has_gui = False
 try:
-    root = tk.Tk()
-    # Destroy the window immediately
-    root.destroy()
+    cv2.namedWindow("test", cv2.WINDOW_NORMAL)
+    cv2.imshow("test", cv2.imread("/dev/null"))  # imagen vacía para probar
+    cv2.waitKey(1)
+    cv2.destroyAllWindows()
     has_gui = True
-except tk.TclError:
+except cv2.error:
     has_gui = False
-
 
 # Define model path
 vmodel_path = python.BaseOptions(model_asset_path='./models/efficientdet_lite2.tflite', delegate=python.BaseOptions.Delegate.CPU)
@@ -45,14 +51,6 @@ tracker = Mtracker("test", timeout=1000)
 
 # Results count status
 last_length = 0
-
-# Init camera
-picam2 = Picamera2()
-# Configura el modo de preview
-picam2.preview_configuration.main.size = (640, 480)
-picam2.preview_configuration.main.format = "RGB888"
-picam2.configure("preview")
-picam2.start()
 
 # App script ID
 SCRIPT_ID = os.getenv("TRAP_CAMERA_APPSCRIPT")
@@ -78,7 +76,7 @@ def store_image(frame, className="Unknown"):
     # Parameters
     data = {
         'folder': "detecciones_camara_trampa",
-        'imageName': f"captura-{className}-{fecha_hora}.jpg",
+        'imageName': f"{className}-{fecha_hora}.jpg",
         'imageType': 'image/jpeg',
         'imageBase64': image_base64
     }
@@ -88,6 +86,7 @@ def store_image(frame, className="Unknown"):
         response = requests.post(base_url, data=data, timeout=10)
         print('Respuesta:', response.text)
     except Exception as e:
+        # Store locally
         print('Error al enviar imagen:', e)
 
 # Thread function
@@ -99,8 +98,8 @@ def store_image_async(frame, className):
 # Main loop
 while True:
     try:
-        frame = picam2.capture_array()
-        if frame is None:
+        ret, frame = cap.read()
+        if not ret:
             break
 
         # Create rgb image
@@ -171,18 +170,25 @@ while True:
             
             # Draw rectangle
             cv2.rectangle(frm, (x1, y1), (x2, y2), (0, 255, 0), 1)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
             # Draw label
             cv2.putText(frm, f'{name}: {oid}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(frame, f'{name}: {oid}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             store_image_async(frm.copy(), result["class_name"])
             # Remove from queue
             del queue[result["id"]]
+        
+        # Draw results
+        if has_gui:
+            cv2.imshow('Object Detection', frame)
             
         # Press esc to leave program
         if cv2.waitKey(1) & 0xFF == 27:
             break
     except Exception as err:
         print(f"Pipeline error: {err}")
-
+        
+        
 # Release hardware and software resources
-picam2.stop()
+cap.stop()
 cv2.destroyAllWindows()
