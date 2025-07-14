@@ -18,4 +18,4 @@
 # WantedBy=multi-user.target
 
 source repo/bin/activate
-python mp.py
+python mp.py >> trapcam.log 2>&1
