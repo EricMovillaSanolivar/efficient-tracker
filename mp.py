@@ -1,3 +1,4 @@
+import os
 import cv2
 import time
 import json
@@ -54,7 +55,7 @@ picam2.configure("preview")
 picam2.start()
 
 # App script ID
-SCRIPT_ID = "YOUR-SCRIPT-ID"
+SCRIPT_ID = os.getenv("TRAP_CAMERA_APPSCRIPT")
 
 # timeout (frames)
 timeout = 3

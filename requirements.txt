@@ -1,3 +1,11 @@
+# Use apt install -y \
+# libcamera-apps \
+# python3-libcamera \
+# python3-picamera2 
+
+# Create venv with --system-site-packages
 opencv-python
 mediapipe==0.10.18
 tkinter
+requests
+picamera2
