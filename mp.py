@@ -214,10 +214,6 @@ print("Initializing...")
 # Main loop
 while running:
     try:
-        # Validate last offline attempt
-        if time.time() - last_retry >= RETRY_INTERVAL:
-            threading.Thread(target=retry_stored_images, daemon=True).start()
-            last_retry = time.time()
         if not is_picam:
             ret, frame = cap.read()
             if not ret:
@@ -308,12 +304,17 @@ while running:
         
         # Draw results
         if has_gui:
-            # cv2.imshow('TrapCam', frame)
+            cv2.imshow('TrapCam', frame)
             # Press esc to leave program
             if cv2.waitKey(1) & 0xFF == 27:
                 running = False
+        # Validate last offline attempt
+        if time.time() - last_retry >= RETRY_INTERVAL:
+            threading.Thread(target=retry_stored_images, daemon=True).start()
+            last_retry = time.time()
             
     except Exception as err:
+        threading.Thread(target=retry_stored_images, daemon=True).start()
         print(f"Pipeline error: {err}")
         
 

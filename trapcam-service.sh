@@ -17,5 +17,6 @@
 # [Install]
 # WantedBy=multi-user.target
 
+export TRAP_CAMERA_APPSCRIPT=your_id
 source repo/bin/activate
 python mp.py >> trapcam.log 2>&1
