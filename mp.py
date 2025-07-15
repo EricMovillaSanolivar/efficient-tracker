@@ -54,7 +54,7 @@ try:
     # Init camera
     cap = Picamera2()
     # Configura el modo de preview
-    cap.preview_configuration.main.size = (640, 480)
+    cap.preview_configuration.main.size = (1280, 720)
     cap.preview_configuration.main.format = "RGB888"
     cap.configure("preview")
     cap.start()
@@ -139,6 +139,7 @@ def store_image(frame, className="Unknown", isStored=False):
     try:
         response = requests.post(base_url, data=data, timeout=10)
         js = response.json()
+        print(str(js))
         if "error" in js:
             raise ValueError(f"Error reportado por el servidor: {js['error']}")
         print("File saved succesfully...")
@@ -224,7 +225,8 @@ while running:
                 break
 
         # Create rgb image
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        print("Frame")
 
         # Create a MPImage object
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
