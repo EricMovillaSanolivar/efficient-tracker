@@ -225,12 +225,12 @@ while running:
                 break
 
         # Create rgb image
-        # rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # Create a MPImage object
-        # mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        mp_image = mp.Image(image_format=mp.ImageFormat.GRAY8, data=rgb_frame)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        # mp_image = mp.Image(image_format=mp.ImageFormat.GRAY8, data=rgb_frame)
         iw = mp_image.width
         ih = mp_image.height
 
