@@ -230,7 +230,7 @@ while running:
 
         # Create a MPImage object
         # mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        mp_image = mp.Image(image_format=mp.ImageFormat.GREY8, data=rgb_frame)
+        mp_image = mp.Image(image_format=mp.ImageFormat.GRAY8, data=rgb_frame)
         iw = mp_image.width
         ih = mp_image.height
 
