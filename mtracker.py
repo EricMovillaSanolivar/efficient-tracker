@@ -16,21 +16,24 @@ track_sample = {
 }
 '''
 
-print("mtrack imported")
-
 class Mtracker:
     
     def __init__(self, timeout = 5000):
-        # Validate directory created
-        if not os.path.exists("./tracker"):
-            os.makedirs("tracker")
-        # Track path
-        self._track_path = "./tracker/tracks.json"
-        # Load or create new track array
-        self._max_id = {}
-        self._tracks = self._load_history()
-        # Set timeout
-        self._timeout = timeout
+        try:
+            # Validate directory created
+            if not os.path.exists("./tracker"):
+                os.makedirs("tracker")
+            # Track path
+            self._track_path = "./tracker/tracks.json"
+            # Load or create new track array
+            self._max_id = {}
+            self._tracks = self._load_history()
+            # Set timeout
+            self._timeout = timeout
+            print("Tracker initialized...")
+        except Exception as err:
+            print(err)
+            raise ValueError(f"Failed to create tracker due to: {err}")
         
     def setTracks(self, source, tracks):
         if tracks is None:
@@ -71,11 +74,11 @@ class Mtracker:
                 # Attempt to update last track id used
                 for src in res.keys():
                     self._max_id[src] = 0
-                    for trk in res[src]:
-                        if self._max_id[src] < trk["track_id"]:
-                            self._max_id[src] = trk["track_id"]
-                    self._max_id[src] += 1
-                print(f"Max ids {self._max_id}")
+                    if len(res[src]) > 0:
+                        for trk in res[src]:
+                            if "track_id" in trk and self._max_id[src] < trk["track_id"]:
+                                self._max_id[src] = trk["track_id"]
+                        self._max_id[src] += 1
                 return res
             except json.JSONDecodeError:
                 # Manage non valid json

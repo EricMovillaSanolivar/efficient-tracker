@@ -3,7 +3,7 @@
 # Before to use this script, set an environtment variable on your os as "TRAP_CAMERA_APPSCRIPT"
 # with your appscript id, that receives and store the image.
 # 
-print("Initializing")
+print("Initializing script...")
 try:
     import os
     import re
@@ -65,6 +65,16 @@ try:
     cap.preview_configuration.main.size = (1280, 720)
     cap.preview_configuration.main.format = "RGB888"
     cap.configure("preview")
+    try:
+        from picamera2.controls import Controls
+        ctr = Controls(cap)
+        # Ejemplo de configuración del enfoque
+        ctr.AfMode = 2  # Autofocus continuo
+        ctr.LensPosition = 1.0  #  Posición del lente (ajustar según necesidad)
+        ctr.AnalogueGain = 0.3
+        cap.set_controls(ctr)
+    except Exception as err:
+        print("Failed to fi focus")
     cap.start()
     is_picam = True
     print("Picamera loaded succesfully")
@@ -211,7 +221,7 @@ def retry_stored_images():
             raise ValueError(f"Error trying to upload file {fl}: {e}")
 
         
-print("Initializing...")
+print("Initializing main loop...")
 # Main loop
 while running:
     try:
@@ -223,6 +233,12 @@ while running:
             frame = cap.capture_array()
             if frame is None:
                 break
+        
+        # 🔹 Convert frame to grayscale (1 channel)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # 🔹 Expand grayscale to 3 channels so it's still compatible with RGB models
+        frame = cv2.merge([gray, gray, gray])
 
         # Create rgb image
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
