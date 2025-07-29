@@ -3,21 +3,28 @@
 # Before to use this script, set an environtment variable on your os as "TRAP_CAMERA_APPSCRIPT"
 # with your appscript id, that receives and store the image.
 # 
+print("Initializing")
+try:
+    import os
+    import re
+    import cv2
+    import time
+    import json
+    import signal
+    import base64
+    import argparse
+    import requests
+    import threading
+    import mediapipe as mp
+    from mtracker import Mtracker
+    from mediapipe.tasks import python
+    from mediapipe.tasks.python import vision
+except Exception as err:
+    print(f"Error loading: {err}")
 
-import os
-import re
-import cv2
-import time
-import json
-import signal
-import base64
-import argparse
-import requests
-import threading
-import mediapipe as mp
-from mtracker import Mtracker
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
+# Reference to tracker
+project_id = "trap-cam1"
+tracker = Mtracker(timeout=1.5)
 
 # Flags for interface
 parser = argparse.ArgumentParser()
@@ -35,7 +42,8 @@ last_length = 0
 timeout = 3
 # Pic queue
 queue = {}
-local_folder = "./tracker/detecciones_locales"
+local_folder = "./detecciones_locales"
+os.makedirs(local_folder, exist_ok=True)
 RETRY_INTERVAL = 1800  # 30 minutes
 last_retry = time.time()
 
@@ -100,14 +108,12 @@ vmodel_path = python.BaseOptions(model_asset_path='./models/efficientdet_lite2.t
 voptions = vision.ObjectDetectorOptions(base_options=vmodel_path, score_threshold=0.3, max_results=100)
 # Reference to mediapipe detector 
 detector = vision.ObjectDetector.create_from_options(voptions)
-
-# Reference to tracker
-tracker = Mtracker("test", timeout=1000)
 print("Mediapipe model succesfully loaded")
 
 # App script ID
 SCRIPT_ID = os.getenv("TRAP_CAMERA_APPSCRIPT")
 script_failed = SCRIPT_ID is None
+print(f"Script id: {SCRIPT_ID}")
 
 # Store image function
 def store_image(frame, className="Unknown", isStored=False):
@@ -147,7 +153,6 @@ def store_image(frame, className="Unknown", isStored=False):
     except Exception as e:
         print('Error al enviar imagen, guardando de manera local. error:', e)
         # Store locally
-        os.makedirs(local_folder, exist_ok=True)
         local_path = os.path.join(local_folder, f"{className}-{fecha_hora}.jpg")
         try:
             if not isStored:
@@ -155,13 +160,8 @@ def store_image(frame, className="Unknown", isStored=False):
                     f.write(buffer)
                 print(f"Imagen guardada localmente en: {local_path}")
         except Exception as err:
-            print(f"No se pudo guardar localmente la imagen: {err}")
+            raise ValueError(f"No se pudo guardar localmente la imagen: {err}")
         return False
-
-# Thread function
-def store_image_async(frame, className):
-    thread = threading.Thread(target=store_image, args=(frame, className))
-    thread.start()
     
 # load local stored images and atempt to save it
 def retry_stored_images():
@@ -208,7 +208,7 @@ def retry_stored_images():
             else:
                 print("Something went wrong while trying to upload the file")
         except Exception as e:
-            print(f"Error trying to upload file {fl}: {e}")
+            raise ValueError(f"Error trying to upload file {fl}: {e}")
 
         
 print("Initializing...")
@@ -262,7 +262,7 @@ while running:
         results = [res for res in results if res["class_id"] in [0, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]]
         
         # Update tracks
-        results = tracker.update(results, time.time())
+        results = tracker.update(project_id, results, time.time())
         
         # Filter results based on history
         results = [res for res in results if res["id"] not in history]
@@ -301,7 +301,7 @@ while running:
             # Draw label
             cv2.putText(frm, f'{name}: {oid}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             cv2.putText(frame, f'{name}: {oid}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            store_image_async(frm.copy(), result["class_name"])
+            threading.Thread(target=store_image, args=(frm.copy(), result["class_name"]), daemon=False).start()
             # Remove from queue
             del queue[result["id"]]
         

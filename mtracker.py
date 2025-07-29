@@ -1,51 +1,50 @@
 import os
-import time
 import json
+import threading
 '''
 track_sample = {
-    id: Track Id
-    area: percentage_area
-    position: {x, y}
-    area_scale: { scale, time_unit },
-    direction_change: { x, y, time_unit }
-    timestamp: last updated timestamp
+    stack: [
+        {
+            id: Track Id
+            area: percentage_area
+            position: {x, y}
+            area_scale: { scale, time_unit },
+            direction_change: { x, y, time_unit }
+            timestamp: last updated timestamp
+        }
+    ]
 }
 '''
 
+print("mtrack imported")
+
 class Mtracker:
     
-    def __init__(self, id, tracks = None, timeout = 5000):
+    def __init__(self, timeout = 5000):
         # Validate directory created
         if not os.path.exists("./tracker"):
             os.makedirs("tracker")
-        # Set ID
-        self._id = id
+        # Track path
+        self._track_path = "./tracker/tracks.json"
+        # Load or create new track array
+        self._max_id = {}
+        self._tracks = self._load_history()
         # Set timeout
         self._timeout = timeout
-        # Load or create new track array
-        self._tracks = [] if tracks is None else tracks
-        # Set last track update timestamp
-        self._last_update = 0
-        # Validate existing timestamp
-        if tracks is not None:
-            for trk in tracks:
-                self._last_update = max(self._last_update, trk['timestamp'])
-        else:
-            self._last_update = time.time()
         
-    def setTracks(self, tracks):
+    def setTracks(self, source, tracks):
         if tracks is None:
             return
         # Set tracks
-        self._tracks = tracks
+        self._tracks[source] = tracks
     
-    def getTracks(self):
+    def getTracks(self, source):
         """
         Get current tracks
         Returns:
             dict: Dictionary with all tracks
         """
-        return self._tracks
+        return self._tracks[source]
     
     def _iou(self, bx1, bx2):
         # Get max and mins
@@ -55,20 +54,60 @@ class Mtracker:
         ib = min(bx1[3], bx2[3])
         # Return 0 if no intersection otherwise calculate intersection
         return 0 if ir < il or ib < it else (ir - il) * (ib - it)
+    
+    
+    def _load_history(self):
+        # Verify if the file exists
+        if not os.path.exists(self._track_path):
+            # Create an empty dictionary
+            with open(self._track_path, "w") as file:
+                json.dump({}, file)
+            return {}
+
+        # Attempt to read existent file
+        with open(self._track_path, "r") as file:
+            try:
+                res = json.load(file)
+                # Attempt to update last track id used
+                for src in res.keys():
+                    self._max_id[src] = 0
+                    for trk in res[src]:
+                        if self._max_id[src] < trk["track_id"]:
+                            self._max_id[src] = trk["track_id"]
+                    self._max_id[src] += 1
+                print(f"Max ids {self._max_id}")
+                return res
+            except json.JSONDecodeError:
+                # Manage non valid json
+                with open(self._track_path, "w") as fw:
+                    json.dump({}, fw)
+                return {}
+            
+    def _update_history(self):
+        try:
+            with open(self._track_path, "w") as file:
+                json.dump(self._tracks, file, indent=4)
+        except Exception as err:
+            raise ValueError("Mtracker: Failed to update track history")
         
-    def update(self, detections, time_stamp):
-        
+    def update(self, source, detections, time_stamp):
         try:
             # Validate current tracks
-            if len(self._tracks) == 0: # There are not current tracks
+            if not source in self._tracks:
+                print(f"Creating source {source}")
+                self._tracks[source] = []
+            # Validate current tracks
+            if not source in self._max_id:
+                self._max_id[source] = 0
+            if len(self._tracks[source]) == 0: # There are not current tracks
                 # Add every detection as a new track
                 for index, det in enumerate(detections):
                     det["id"] = index # Embed track id to results
                     # Reference to detection bbox
                     bbx = det["bbox"]
                     # Add track
-                    self._tracks.append({
-                        "track_id": index,
+                    self._tracks[source].append({
+                        "track_id": self._max_id[source],
                         "class_id": det["class_id"],
                         "bbox": bbx,
                         "area": (bbx[2] - bbx[0]) * (bbx[3] - bbx[1]),
@@ -84,16 +123,17 @@ class Mtracker:
                         "delta_time": 1,
                         "timestamp": time_stamp
                     })
+                    self._max_id[source] += 1
                 # Return detections with assignded track_ids
                 return detections
             else:
                 # Results reference
                 results = []
-                # matches = []
                 # Delta time
-                delta_time = time_stamp - self._last_update
+                tracks_to_remove = []
                 # Search for class matches
-                for trk_ind, track in enumerate(self._tracks):
+                for trk_ind, track in enumerate(self._tracks[source]):
+                    delta_time = time_stamp - track["timestamp"]
                     pred_area = (delta_time * track["area_scale"] / track["delta_time"]) * track["area"]
                     pred_pos = {
                         "x": ((delta_time * track["position_change"]["x"]) / track["delta_time"]) + track["position"]["x"],
@@ -145,28 +185,29 @@ class Mtracker:
                         # Add result with assigned track_id
                         results.append(result)
                         # Update track
-                        self._tracks[trk_ind] = track_match.copy()
+                        self._tracks[source][trk_ind] = track_match.copy()
                     else:
                         # Kill ids
-                        if time_stamp - track["timestamp"] > self._timeout:
-                            print(f"track {trk_ind} deleted")
-                            self._tracks.pop(trk_ind)
-                            
+                        if delta_time > self._timeout:
+                            print(f"track {track['track_id']} deleted")
+                            tracks_to_remove.append(trk_ind)
+                
+                # Delete expired indexes
+                for idx in reversed(tracks_to_remove):
+                    self._tracks[source].pop(idx)
                 
                 # Add ids to remaining detections
                 if len(detections) > 0:
-                    trks = self._tracks
-                    start_id = trks[len(trks) - 1]["track_id"] + 1
                     for det in detections:
                         # Assign track id
-                        det["id"] = start_id
+                        det["id"] = self._max_id[source]
                         # Add to results
                         results.append(det)
                         # Add track
                         # Reference to detection bbox
                         bbx = det["bbox"]
-                        self._tracks.append({
-                            "track_id": start_id,
+                        self._tracks[source].append({
+                            "track_id": self._max_id[source],
                             "class_id": det["class_id"],
                             "bbox": bbx,
                             "area": (bbx[2] - bbx[0]) * (bbx[3] - bbx[1]),
@@ -182,12 +223,9 @@ class Mtracker:
                             "delta_time": 1,
                             "timestamp": time_stamp
                         })
-                        # Increase id count
-                        start_id += 1
+                        self._max_id[source] += 1
                 return results
         except Exception as err:
-            print(f"Error while trying to update tracks: {err}")
-            return detections
+            raise ValueError(f"Mtracker: Error while trying to update tracks: {err}")
         finally:
-            with open(f"./tracker/tracks-{self._id}.json", "w") as file:
-                file.write(json.dumps({ "tracks": self._tracks }))
+            threading.Thread(target=self._update_history, daemon=False).start()
