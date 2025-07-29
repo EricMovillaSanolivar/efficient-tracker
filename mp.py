@@ -62,7 +62,7 @@ try:
     # Init camera
     cap = Picamera2()
     # Configura el modo de preview
-    cap.preview_configuration.main.size = (1280, 720)
+    cap.preview_configuration.main.size = (800, 600)
     cap.preview_configuration.main.format = "RGB888"
     cap.configure("preview")
     try:
