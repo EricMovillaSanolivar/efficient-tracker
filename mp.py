@@ -208,7 +208,7 @@ def retry_stored_images():
 
         # Attempt to upload image again
         try:
-            loaded = store_image(frame, className=class_name, date_time=date isStored=True)
+            loaded = store_image(frame, className=class_name, date_time=date, isStored=True)
             # Validate
             if loaded:
                 os.remove(local_path)
