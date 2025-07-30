@@ -222,6 +222,7 @@ def retry_stored_images():
 
         
 print("Initializing main loop...")
+retry_stored_images()
 # Main loop
 while running:
     try:
