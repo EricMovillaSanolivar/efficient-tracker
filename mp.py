@@ -126,7 +126,7 @@ script_failed = SCRIPT_ID is None
 print(f"Script id: {SCRIPT_ID}")
 
 # Store image function
-def store_image(frame, className="Unknown", isStored=False):
+def store_image(frame, className="Unknown", date_time=time.strftime('%d-%m-%Y_%H%M%S'), isStored=False):
     if script_failed:
         print("Theres no script id to execute")
         return False
@@ -140,13 +140,10 @@ def store_image(frame, className="Unknown", isStored=False):
     _, buffer = cv2.imencode('.jpg', frame)
     image_base64 = base64.b64encode(buffer).decode('utf-8')
 
-    # Timestamp
-    fecha_hora = time.strftime('%d-%m-%Y_%H%M%S')
-
     # Parameters
     data = {
         'folder': "detecciones_camara_trampa",
-        'imageName': f"{className}-{fecha_hora}.jpg",
+        'imageName': f"{className}-{date_time}.jpg",
         'imageType': 'image/jpeg',
         'imageBase64': image_base64
     }
@@ -163,7 +160,7 @@ def store_image(frame, className="Unknown", isStored=False):
     except Exception as e:
         print('Error al enviar imagen, guardando de manera local. error:', e)
         # Store locally
-        local_path = os.path.join(local_folder, f"{className}-{fecha_hora}.jpg")
+        local_path = os.path.join(local_folder, f"{className}-{date_time}.jpg")
         try:
             if not isStored:
                 with open(local_path, "wb") as f:
@@ -195,9 +192,10 @@ def retry_stored_images():
         local_path = os.path.join(local_folder, fl)
 
         # Extract className from filename (formato: className-fecha.jpg)
-        match = re.match(r"(.+)-\d{2}-\d{2}-\d{4}_\d{6}\.jpg", fl)
+        match = re.match(r"(.*?)-(.*).jpg$", fl)
         if match:
             class_name = match.group(1)
+            date = match.group(2)
         else:
             print(f"Class not found in file name: {fl}")
             continue
@@ -210,7 +208,7 @@ def retry_stored_images():
 
         # Attempt to upload image again
         try:
-            loaded = store_image(frame, className=class_name, isStored=True)
+            loaded = store_image(frame, className=class_name, date_time=date isStored=True)
             # Validate
             if loaded:
                 os.remove(local_path)
