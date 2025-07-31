@@ -18,7 +18,7 @@ track_sample = {
 
 class Mtracker:
     
-    def __init__(self, timeout = 5000):
+    def __init__(self, timeout = 5):
         try:
             # Validate directory created
             if not os.path.exists("./tracker"):
