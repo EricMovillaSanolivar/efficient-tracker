@@ -126,7 +126,11 @@ script_failed = SCRIPT_ID is None
 print(f"Script id: {SCRIPT_ID}")
 
 # Store image function
-def store_image(frame, className="Unknown", date_time=time.strftime('%d-%m-%Y_%H%M%S'), isStored=False):
+def store_image(frame, className="Unknown", date_time=None, isStored=False):
+    
+    if date_time is None:
+        date_time = time.strftime('%d-%m-%Y_%H%M%S')
+        
     if script_failed:
         print("Theres no script id to execute")
         return False
