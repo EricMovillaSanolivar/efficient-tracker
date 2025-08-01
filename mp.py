@@ -278,7 +278,7 @@ while running:
         ]
         
         # Filter persons and animals only
-        results = [res for res in results if res["class_id"] in [0, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]]
+        results = [res for res in results if res["class_id"] in [0, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] and res["score"] > 0.4]
         
         # Update tracks
         results = tracker.update(project_id, results, time.time())
