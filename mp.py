@@ -62,9 +62,18 @@ try:
     # Init camera
     cap = Picamera2()
     # Configura el modo de preview
-    cap.preview_configuration.main.size = (800, 600)
-    cap.preview_configuration.main.format = "RGB888"
-    cap.configure("preview")
+    # cap.preview_configuration.main.size = (800, 600)
+    # cap.preview_configuration.main.format = "RGB888"
+    cfg = cap.create_preview_configuration(
+        main={"size": (1280, 720), "format": "RGB888"},
+        sensor={"output_size": (2304, 1296)}  # modo 16:9 del sensor
+    )
+    cap.configure(cfg)
+    
+    # Garantizar que se use TODO el sensor (sin ROI previo → sin crop)
+    pa_w, pa_h = cap.camera_properties["PixelArraySize"]  # debería ser (4608, 2592)
+    cap.set_controls({"ScalerCrop": (0, 0, pa_w, pa_h)})
+    
     try:
         from picamera2.controls import Controls
         ctr = Controls(cap)
@@ -73,6 +82,7 @@ try:
         ctr.LensPosition = 1.0  #  Posición del lente (ajustar según necesidad)
         ctr.AnalogueGain = 0.3
         cap.set_controls(ctr)
+        print("Fixed focus configured")
     except Exception as err:
         print("Failed to fi focus")
     cap.start()
