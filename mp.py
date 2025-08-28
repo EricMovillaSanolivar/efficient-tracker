@@ -62,8 +62,6 @@ try:
     # Init camera
     cap = Picamera2()
     # Configura el modo de preview
-    # cap.preview_configuration.main.size = (800, 600)
-    # cap.preview_configuration.main.format = "RGB888"
     cfg = cap.create_preview_configuration(
         main={"size": (1280, 720), "format": "RGB888"},
         sensor={"output_size": (2304, 1296)}  # modo 16:9 del sensor
@@ -247,11 +245,11 @@ while running:
             if frame is None:
                 break
         
-        # 🔹 Convert frame to grayscale (1 channel)
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # # 🔹 Convert frame to grayscale (1 channel)
+        # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        # 🔹 Expand grayscale to 3 channels so it's still compatible with RGB models
-        frame = cv2.merge([gray, gray, gray])
+        # # 🔹 Expand grayscale to 3 channels so it's still compatible with RGB models
+        # frame = cv2.merge([gray, gray, gray])
 
         # Create rgb image
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
