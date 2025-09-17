@@ -18,8 +18,9 @@ track_sample = {
 
 class Mtracker:
     
-    def __init__(self, timeout = 5):
+    def __init__(self, timeout = 5, debug=False):
         try:
+            self.debug = debug
             # Validate directory created
             if not os.path.exists("./tracker"):
                 os.makedirs("tracker")
@@ -30,7 +31,7 @@ class Mtracker:
             self._tracks = self._load_history()
             # Set timeout
             self._timeout = timeout
-            print("Tracker initialized...")
+            if self.debug: print("Tracker initialized...")
         except Exception as err:
             print(err)
             raise ValueError(f"Failed to create tracker due to: {err}")

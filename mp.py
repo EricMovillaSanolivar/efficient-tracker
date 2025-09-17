@@ -3,7 +3,6 @@
 # Before to use this script, set an environtment variable on your os as "TRAP_CAMERA_APPSCRIPT"
 # with your appscript id, that receives and store the image.
 # 
-print("Initializing script...")
 try:
     import os
     import re
@@ -26,12 +25,16 @@ except Exception as err:
 
 # Reference to tracker
 project_id = "finca"
-tracker = Mtracker(timeout=4)
 
 # Flags for interface
 parser = argparse.ArgumentParser()
 parser.add_argument("--enable-gui", action="store_true", help="Run using GUI interface")
+parser.add_argument("--debug", action="store_true", help="Run with debug logs")
 args = parser.parse_args()
+
+DEBUG_MODE = args.debug
+if DEBUG_MODE: print("Initializing script...")
+tracker = Mtracker(timeout=4, debug=DEBUG_MODE)
 
 # Trap cam engine is runing
 running = True
@@ -137,15 +140,16 @@ print(f"Script id: {SCRIPT_ID}")
 # Store image function
 def store_image(annotated, source, frame, className="Unknown"):
     global local_folder
+    global DEBUG_MODE
     # Validate script is working
     if script_failed:
-        print("Theres no script id to execute")
+        if DEBUG_MODE: print("Theres no script id to execute")
         return False
     
     # Create date
     date_time = time.strftime('%d-%m-%Y_%H%M%S')
         
-    print("Attempting to save file on cloud")
+    if DEBUG_MODE: print("Attempting to save file on cloud")
     # Build URL
     base_url = f"https://script.google.com/macros/s/{SCRIPT_ID}/exec"
 
@@ -167,14 +171,14 @@ def store_image(annotated, source, frame, className="Unknown"):
     try:
         response = requests.post(base_url, data=data, timeout=10)
         js = response.json()
-        print(str(js))
+        if DEBUG_MODE: print(str(js))
         if "error" in js:
             raise ValueError(f"Error reportado por el servidor: {js['error']}")
-        print("File saved succesfully...")
+        print(f"File '{file_name}' saved succesfully...")
         return True
     # If an error, store locally
     except Exception as e:
-        print('Error al enviar imagen, guardando de manera local. error:', e)
+        print(f"Error al enviar '{file_name}', guardando de manera local. error:", e)
         # Store locally
         local_path = os.path.join(local_folder, file_name)
         try:
@@ -188,6 +192,7 @@ def store_image(annotated, source, frame, className="Unknown"):
 # load local stored images and atempt to save it
 def retry_stored_images():
     global local_folder
+    global DEBUG_MODE
     if script_failed:
         print("⚠ No hay SCRIPT_ID configurado, no se pueden reintentar subidas.")
         return
@@ -204,7 +209,7 @@ def retry_stored_images():
         print("There are no images to upload.")
         return
 
-    print(f"Loading {len(files)} images.")
+    if DEBUG_MODE: print(f"Loading {len(files)} images.")
 
     for fl in files:
         local_path = os.path.join(local_folder, fl)
@@ -231,6 +236,7 @@ def retry_stored_images():
         try:
             response = requests.post(base_url, data=data, timeout=10)
             js = response.json()
+            if DEBUG_MODE: print(str(js))
             if "error" in js:
                 print(js["error"])
                 continue
@@ -265,7 +271,7 @@ if args.enable_gui:
             print(f"Host has not GUI on {system} (cv2 error)")
         
         
-print("Initializing main loop...")
+if DEBUG_MODE: print("Initializing main loop...")
 retry_stored_images()
 # Main loop
 while running:
@@ -275,107 +281,109 @@ while running:
         frames_to_show = {}
         curr_det = 0
         for cam_name, cam in cams.items():
-                if not is_picam:
-                    ret, frame = cam.read()
-                    if not ret:
-                        break
+            if not is_picam:
+                ret, frame = cam.read()
+                if not ret:
+                    break
+            else:
+                frame = cam.capture_array()
+                if frame is None:
+                    break
+            
+            clean_frame = frame.copy()
+            
+            if curr_det == 0:
+                # Create rgb image
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            else:
+                # 🔹 Convert frame to grayscale (1 channel)
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                # 🔹 Expand grayscale to 3 channels so it's still compatible with RGB models
+                rgb_frame = cv2.merge([gray, gray, gray])
+
+            # Create a MPImage object
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+            # mp_image = mp.Image(image_format=mp.ImageFormat.GRAY8, data=rgb_frame)
+            iw = mp_image.width
+            ih = mp_image.height
+
+            # Request detections
+            detection_result = models[curr_det].detect(mp_image)
+            curr_det += 1
+            
+            # Build results
+            results = [
+                {
+                    "bbox": [
+                        # By default mediapipe gives you pixel coordinates. Normalizing when required
+                        bbx.origin_x / iw,
+                        bbx.origin_y / ih,
+                        (bbx.origin_x + bbx.width) / iw,
+                        (bbx.origin_y + bbx.height) / ih
+                    ],
+                    "centroid": [
+                        iw / (bbx.origin_x + bbx.width),
+                        ih / (bbx.origin_y + bbx.height),
+                    ],
+                    "class_name": det.categories[0].category_name,
+                    "class_id": yolo_cls[det.categories[0].category_name],
+                    "score": det.categories[0].score
+                }
+                for det in detection_result.detections for bbx in [det.bounding_box]
+            ]
+            
+            # Filter persons and animals only
+            results = [res for res in results if res["class_id"] in [0, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] and res["score"] > 0.4]
+            
+            # Update tracks
+            results = tracker.update(f"{project_id}-{cam_name}", results, time.time())
+            
+            # Filter results based on history
+            results = [res for res in results if res["id"] not in history[cam_name]]
+            
+            # Draw bbox and label for each result
+            for result in results:
+                
+                bbx = result["bbox"]            
+                x1 = int(bbx[0] * iw)
+                y1 = int(bbx[1] * ih)
+                x2 = int(bbx[2] * iw)
+                y2 = int(bbx[3] * ih)
+                
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 1)
+                
+                # Delay a frame to avoid flickering
+                if result["id"] not in queue[cam_name]:
+                    queue[cam_name][result["id"]] = timeout
+                    continue
                 else:
-                    frame = cam.capture_array()
-                    if frame is None:
-                        break
-                
-                clean_frame = frame.copy()
-                
-                if curr_det == 0:
-                    # Create rgb image
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                else:
-                    # 🔹 Convert frame to grayscale (1 channel)
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-                    # 🔹 Expand grayscale to 3 channels so it's still compatible with RGB models
-                    rgb_frame = cv2.merge([gray, gray, gray])
-
-                # Create a MPImage object
-                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-                # mp_image = mp.Image(image_format=mp.ImageFormat.GRAY8, data=rgb_frame)
-                iw = mp_image.width
-                ih = mp_image.height
-
-                # Request detections
-                detection_result = models[curr_det].detect(mp_image)
-                curr_det += 1
-                
-                # Build results
-                results = [
-                    {
-                        "bbox": [
-                            # By default mediapipe gives you pixel coordinates. Normalizing when required
-                            bbx.origin_x / iw,
-                            bbx.origin_y / ih,
-                            (bbx.origin_x + bbx.width) / iw,
-                            (bbx.origin_y + bbx.height) / ih
-                        ],
-                        "centroid": [
-                            iw / (bbx.origin_x + bbx.width),
-                            ih / (bbx.origin_y + bbx.height),
-                        ],
-                        "class_name": det.categories[0].category_name,
-                        "class_id": yolo_cls[det.categories[0].category_name],
-                        "score": det.categories[0].score
-                    }
-                    for det in detection_result.detections for bbx in [det.bounding_box]
-                ]
-                
-                # Filter persons and animals only
-                results = [res for res in results if res["class_id"] in [0, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] and res["score"] > 0.4]
-                
-                # Update tracks
-                results = tracker.update(f"{project_id}-{cam_name}", results, time.time())
-                
-                # Filter results based on history
-                results = [res for res in results if res["id"] not in history[cam_name]]
-                
-                # Draw bbox and label for each result
-                for result in results:
-                    
-                    bbx = result["bbox"]            
-                    x1 = int(bbx[0] * iw)
-                    y1 = int(bbx[1] * ih)
-                    x2 = int(bbx[2] * iw)
-                    y2 = int(bbx[3] * ih)
-                    
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 1)
-                    
-                    # Delay a frame to avoid flickering
-                    if result["id"] not in queue[cam_name]:
-                        queue[cam_name][result["id"]] = timeout
+                    queue[cam_name][result["id"]] -= 1
+                    if queue[cam_name][result["id"]] > 0:
                         continue
-                    else:
-                        queue[cam_name][result["id"]] -= 1
-                        if queue[cam_name][result["id"]] > 0:
-                            continue
-                    
-                    # New object detected, store image
-                    history[cam_name].append(result["id"])
-                    # Retrieve required data
-                    name = result["class_name"]
-                    oid = result["id"]
-                    
-                    # Draw rectangle
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
-                    # Draw label
-                    cv2.putText(frame, f'{name}: {oid}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                    # Copy frame
-                    frm = frame.copy()
-                    # Store clean frame
-                    threading.Thread(target=store_image, args=(False, cam_name, clean_frame, result["class_name"]), daemon=False).start()
-                    # Store annotated
-                    threading.Thread(target=store_image, args=(True, cam_name, frm, result["class_name"]), daemon=False).start()
-                    # Remove from queue
-                    del queue[cam_name][result["id"]]
+                
+                # New object detected, store image
+                history[cam_name].append(result["id"])
+                # Retrieve required data
+                name = result["class_name"]
+                oid = result["id"]
+                
+                # Draw rectangle
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
+                # Draw label
+                cv2.putText(frame, f'{name}: {oid}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                # Copy frame
+                frm = frame.copy()
+                # Store clean frame
+                threading.Thread(target=store_image, args=(False, cam_name, clean_frame, result["class_name"]), daemon=False).start()
+                # Store annotated
+                threading.Thread(target=store_image, args=(True, cam_name, frm, result["class_name"]), daemon=False).start()
+                # Remove from queue
+                del queue[cam_name][result["id"]]
+            # Update frame
+            frames_to_show[cam_name] = frame
         
-        print(f"Pipeline time: {time.time() - strt}")
+        if DEBUG_MODE: print(f"Pipeline time: {time.time() - strt}")
                 
     
         if has_gui and frames_to_show:
