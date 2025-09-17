@@ -93,10 +93,10 @@ except Exception as err:
     print("Picamera not available, attempting to load default camera")
     try:
         cam1 = cv2.VideoCapture(0)
-        cam2 = cv2.VideoCapture(1)
-
         if not cam1.isOpened():
             raise IOError("❌ No se pudo abrir la cámara USB en /dev/video0")
+        
+        cam2 = cv2.VideoCapture(1)
         if not cam2.isOpened():
             raise IOError("❌ No se pudo abrir la cámara USB en /dev/video1")
 
@@ -123,7 +123,10 @@ vmodel_path = python.BaseOptions(model_asset_path='./models/efficientdet_lite2.t
 # Define model options
 voptions = vision.ObjectDetectorOptions(base_options=vmodel_path, score_threshold=0.3, max_results=100)
 # Reference to mediapipe detector 
-detector = vision.ObjectDetector.create_from_options(voptions)
+models = [
+    vision.ObjectDetector.create_from_options(voptions),
+    vision.ObjectDetector.create_from_options(voptions)
+]
 print("Mediapipe model succesfully loaded")
 
 # App script ID
@@ -267,7 +270,10 @@ retry_stored_images()
 # Main loop
 while running:
     try:
+        # start time
+        strt = time.time()
         frames_to_show = {}
+        curr_det = 0
         for cam_name, cam in cams.items():
                 if not is_picam:
                     ret, frame = cam.read()
@@ -280,15 +286,15 @@ while running:
                 
                 clean_frame = frame.copy()
                 
-                # # 🔹 Convert frame to grayscale (1 channel)
-                # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                if curr_det == 0:
+                    # Create rgb image
+                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                else:
+                    # 🔹 Convert frame to grayscale (1 channel)
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                # # 🔹 Expand grayscale to 3 channels so it's still compatible with RGB models
-                # frame = cv2.merge([gray, gray, gray])
-
-                # Create rgb image
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                # rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    # 🔹 Expand grayscale to 3 channels so it's still compatible with RGB models
+                    rgb_frame = cv2.merge([gray, gray, gray])
 
                 # Create a MPImage object
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
@@ -297,7 +303,8 @@ while running:
                 ih = mp_image.height
 
                 # Request detections
-                detection_result = detector.detect(mp_image)
+                detection_result = models[curr_det].detect(mp_image)
+                curr_det += 1
                 
                 # Build results
                 results = [
@@ -367,6 +374,8 @@ while running:
                     threading.Thread(target=store_image, args=(True, cam_name, frm, result["class_name"]), daemon=False).start()
                     # Remove from queue
                     del queue[cam_name][result["id"]]
+        
+        print(f"Pipeline time: {time.time() - strt}")
                 
     
         if has_gui and frames_to_show:
