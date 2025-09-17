@@ -26,7 +26,7 @@ except Exception as err:
 
 # Reference to tracker
 project_id = "finca"
-tracker = Mtracker(timeout=1.5)
+tracker = Mtracker(timeout=4)
 
 # Flags for interface
 parser = argparse.ArgumentParser()
@@ -366,7 +366,7 @@ while running:
                     # Store annotated
                     threading.Thread(target=store_image, args=(True, cam_name, frm, result["class_name"]), daemon=False).start()
                     # Remove from queue
-                    del queue[result["id"]]
+                    del queue[cam_name][result["id"]]
                 
     
         if has_gui and frames_to_show:
