@@ -1,4 +1,5 @@
 *.pt
 /tracker
+/repo
 /detecciones_locales
 __pycache__/
